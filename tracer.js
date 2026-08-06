@@ -2231,10 +2231,10 @@ class Renderer {
     uView.setUint32(20*4, this.skyboxData.width, true);
     uView.setUint32(21*4, this.skyboxData.height, true);
     uView.setFloat32(22*4, this.skyboxData.total_lum, true);
-    uView.setFloat32(23*4, this.skyboxData.sky_cdf_index, true);
+    uView.setFloat32(23*4, this.totalLightPower, true);
     uView.setUint32(24*4, this.section.x, true);
     uView.setUint32(25*4, this.section.y, true);
-    uView.setFloat32(26*4, this.totalLightPower, true);
+    uView.setUint32(26*4, this.skyboxData.sky_cdf_index, true);
 
     device.queue.writeBuffer(uBuf, 0, uData);
   }
