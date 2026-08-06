@@ -1909,7 +1909,7 @@ class Renderer {
         hasHeightMaps: hasHeightMaps,
         hasLights: hasLights,
         hasSkybox: scene.background instanceof HDRTexture,
-        misSkybox: !scene.background.plainColor
+        misSkybox: !scene.background.plainColor && scene.background.enableNEE
       }
     };
 
