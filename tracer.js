@@ -135,13 +135,23 @@ class HDRTexture {
   buildHDRCDF() {
     const { width, height, data } = this; 
 
-    // We need 2 types of CDFs:
-    // 1. Conditional: A CDF for each row (width + 1 elements per row)
-    // 2. Marginal: A single CDF for the rows (height + 1 elements)
-    const condCDF = new Float32Array(height * (width + 1));
-    const margCDF = new Float32Array(height + 1);
+    // Sizes:
+    // margCDF takes (height + 1) elements
+    // condCDF takes height * (width + 1) elements
+    const margSize = height + 1;
+    const condSize = height * (width + 1);
+    
+    // Single unified buffer
+    const skyCDF = new Float32Array(margSize + condSize);
+    
+    // Let's place margCDF at the very beginning (index 0)
+    const margCDF = skyCDF.subarray(0, margSize);
+    // Let's place condCDF right after it
+    const condCDF = skyCDF.subarray(margSize, margSize + condSize);
 
     let totalWeight = 0;
+
+    margCDF[0] = 0;
 
     for (let y = 0; y < height; y++) {
       let rowWeight = 0;
@@ -155,20 +165,17 @@ class HDRTexture {
         const g = Math.min(data[idx + 1] * this.exposure, this.threshold);
         const b = Math.min(data[idx + 2] * this.exposure, this.threshold);
         
-        // Luminance * Sin(Theta) to account for polar mapping distortion
         const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) * sinTheta;
         
         rowWeight += lum;
         condCDF[y * (width + 1) + x + 1] = rowWeight;
       }
 
-      // Normalize the row CDF
       if (rowWeight > 0) {
         for (let x = 1; x <= width; x++) {
           condCDF[y * (width + 1) + x] /= rowWeight;
         }
       } else {
-        // Fallback for black rows
         for (let x = 1; x <= width; x++) {
           condCDF[y * (width + 1) + x] = x / width;
         }
@@ -178,7 +185,6 @@ class HDRTexture {
       margCDF[y + 1] = totalWeight;
     }
 
-    // Normalize the marginal CDF
     if (totalWeight > 0) {
       for (let y = 1; y <= height; y++) {
         margCDF[y] /= totalWeight;
@@ -189,8 +195,14 @@ class HDRTexture {
       }
     }
 
-    return { condCDF, margCDF, totalWeight };
+    // Pass `skyCDF` to your GPU buffer, and record where the conditional CDF starts
+    return { 
+      skyCDF, 
+      sky_cdf_index: margSize, // This is the offset where condCDF begins!
+      totalWeight 
+    };
   }
+
 }
 
 class Material {
@@ -1989,8 +2001,8 @@ class Renderer {
       minFilter: 'linear',
     });
 
-    const { condCDF, margCDF, totalWeight } = skybox.buildHDRCDF();
-
+    const { skyCDF, sky_cdf_index, totalWeight } = skybox.buildHDRCDF();
+    
     console.log("Created Textures");
 
     // Build the data packets
@@ -2020,8 +2032,7 @@ class Renderer {
       tlas: makeBuf(sceneData.tlas.data, 32),         
       plane: makeBuf(sceneData.plane.data, sceneData.plane.size),
       light: makeBuf(sceneData.light.data, sceneData.light.size),
-      cond: makeBuf(condCDF,4),
-      marg: makeBuf(margCDF,4),
+      skycdf: makeBuf(skyCDF,4),
     };
 
     this.uBuf = device.createBuffer({ size: 28 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -2076,6 +2087,7 @@ class Renderer {
       total_lum: totalWeight,
       width: skybox.width,
       height: skybox.height,
+      sky_cdf_index: sky_cdf_index,
     };
     this.gpuTextureView = gpuTextureView;
     this.sampler = sampler;
@@ -2111,8 +2123,7 @@ class Renderer {
         { binding: 17, resource: { buffer: this.gBuf } }
       ] : [
         { binding: 10, resource: { buffer: this.buffers.light } },
-        { binding: 15, resource: { buffer: this.buffers.cond } },
-        { binding: 16, resource: { buffer: this.buffers.marg } },
+        { binding: 15, resource: { buffer: this.buffers.skycdf } },
       ])
     });
     return this.bG;
@@ -2220,9 +2231,10 @@ class Renderer {
     uView.setUint32(20*4, this.skyboxData.width, true);
     uView.setUint32(21*4, this.skyboxData.height, true);
     uView.setFloat32(22*4, this.skyboxData.total_lum, true);
-    uView.setFloat32(23*4, this.totalLightPower, true);
+    uView.setFloat32(23*4, this.skyboxData.sky_cdf_index, true);
     uView.setUint32(24*4, this.section.x, true);
     uView.setUint32(25*4, this.section.y, true);
+    uView.setFloat32(26*4, this.totalLightPower, true);
 
     device.queue.writeBuffer(uBuf, 0, uData);
   }
