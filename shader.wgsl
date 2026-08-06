@@ -28,7 +28,8 @@ struct SceneParams {
   sky_total_lum: f32,
   total_light_power: f32,
   section: vec2u,
-  pad0: vec2f,
+  sky_cdf_index: u32,
+  pad0: f32,
 };
 
 struct Material {
@@ -140,8 +141,7 @@ struct SurfaceHit {
 // skybox
 @group(0) @binding(13) var skyTex: texture_2d<f32>;
 @group(0) @binding(14) var skySampler: sampler;
-@group(0) @binding(15) var<storage, read> cond_cdf: array<f32>;
-@group(0) @binding(16) var<storage, read> marg_cdf: array<f32>;
+@group(0) @binding(15) var<storage, read> sky_cdf: array<f32>;
 
 var<private> rng_state: u32;
 fn rand_pcg() -> f32 {
@@ -196,9 +196,9 @@ fn binary_search_cdf(search_in: u32, offset: u32, size: u32, targ: f32) -> u32 {
     let mid = low + (high - low) / 2u;
     var val: f32;
     if (search_in == 0u) {
-      val = cond_cdf[offset + mid];
+      val = sky_cdf[offset + mid];
     } else {
-      val = marg_cdf[offset + mid];
+      val = sky_cdf[offset + mid + params.sky_cdf_index];
     }
     if (val < targ) {
       low = mid + 1u;
