@@ -189,17 +189,13 @@ fn sample_sky(dir: vec3f) -> vec3f {
 
 // Generic binary search for CDF arrays
 // search_in: 0 for cond_cdf, 1 for marg_cdf
-fn binary_search_cdf(search_in: u32, offset: u32, size: u32, targ: f32) -> u32 {
+fn binary_search_cdf(offset: u32, size: u32, targ: f32) -> u32 {
   var low: u32 = 0u;
   var high: u32 = size;
   while (low < high) {
     let mid = low + (high - low) / 2u;
     var val: f32;
-    if (search_in == 0u) {
-      val = sky_cdf[offset + mid];
-    } else {
-      val = sky_cdf[offset + mid + params.sky_cdf_index];
-    }
+    val = sky_cdf[offset + mid];
     if (val < targ) {
       low = mid + 1u;
     } else {
@@ -236,9 +232,9 @@ fn sample_env_cdf(u: vec2f) -> LightSample {
   var samp: LightSample;
   
   // Binary search to find row and column (as you already have)
-  let v_idx = binary_search_cdf(1u, 0u, params.sky_height, u.y);
-  let row_offset = v_idx * (params.sky_width + 1u);
-  let u_idx = binary_search_cdf(0u, row_offset, params.sky_width, u.x);
+  let v_idx = binary_search_cdf(0u, params.sky_height, u.y);
+  let row_offset = params.sky_cdf_index + (v_idx * (params.sky_width + 1u));
+  let u_idx = binary_search_cdf(row_offset, params.sky_width, u.x);
 
   let u_coord = (f32(u_idx) + 0.5) / f32(params.sky_width);
   let v_coord = (f32(v_idx) + 0.5) / f32(params.sky_height);
